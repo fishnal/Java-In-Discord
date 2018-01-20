@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"name": "Source Code",
+			"path": "src"
+		},
+		{
+			"name": "Tests",
+			"path": "tests"
+		},
+		{
+			"name": "Configuration Files",
+			"path": ".vscode"
+		}
+	],
+	"settings": {
+		"files.autoSaveDelay": 10000,
+		"files.autoSave": "afterDelay",
+	}
+}
