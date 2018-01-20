@@ -1,5 +1,5 @@
 "use strict";
-
+Object.defineProperty(exports, "__esModule", { value: true });
 /**
  * Indicates that timeout limit was reached.
  */
@@ -8,7 +8,7 @@ class TimeoutError extends Error {
         super(message);
     }
 }
-
+exports.TimeoutError = TimeoutError;
 /**
  * Indicates that an illegal access to something was attempted.
  */
@@ -17,7 +17,7 @@ class AccessError extends Error {
         super(message);
     }
 }
-
+exports.AccessError = AccessError;
 /**
  * Indicates that an illegal file/folder access was attempted.
  */
@@ -26,7 +26,7 @@ class FileAccessError extends AccessError {
         super(message);
     }
 }
-
+exports.FileAccessError = FileAccessError;
 /**
  * Indicates that an illegal workspace access was attempted.
  * For example, User A attempts to access User B's workspace
@@ -37,7 +37,7 @@ class WorkspaceAccessError extends AccessError {
         super(message);
     }
 }
-
+exports.WorkspaceAccessError = WorkspaceAccessError;
 /**
  * Indicates an invalid JDK or some issue with the JDK.
  */
@@ -46,9 +46,4 @@ class JDKError extends Error {
         super(message);
     }
 }
-
-exports.TimeoutError = TimeoutError;
-exports.AccessError = AccessError;
-exports.FileAccessError = FileAccessError;
-exports.WorkspaceAccessError = WorkspaceAccessError;
 exports.JDKError = JDKError;

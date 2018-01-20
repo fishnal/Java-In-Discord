@@ -1,4 +1,4 @@
-const Server = require('../../src/js/server').Server;
+const Server = require('../src/js/server').Server;
 
 var server = new Server();
 

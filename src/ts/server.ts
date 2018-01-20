@@ -266,5 +266,3 @@ export class Server {
 		return outputPipe.getData();
 	}
 }
-
-new Server().repl('2+3', {});
