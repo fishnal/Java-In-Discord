@@ -1,4 +1,5 @@
 import * as stream from 'stream';
+import * as interfaces from './interfaces';
 
 /**
  * Initializes locally scoped field 'chars'.
@@ -46,8 +47,10 @@ export function randString(length: number = 10) {
  * via StringWriter#getData()
  */
 export class StringWriter extends stream.Writable {
+	/**
+	 * The string this Writer writes to.
+	 */
 	private data: string = '';
-
 
 	/**
 	 * Constructs a StringWriter, setting its output string to an empty string.
@@ -56,7 +59,7 @@ export class StringWriter extends stream.Writable {
 		super();
 	}
 
-	public _write(chunk, encoding, callback) {
+	public _write(chunk, encoding: string, callback: (err?: Error) => void): void {
 		this.data += Object(chunk).toString();
 
 		callback(null);
@@ -94,7 +97,7 @@ export class StringReader extends stream.Readable {
 		this.data = str;
 	}
 
-	_read(size) {
+	_read(size: number) {
 		if (this.marker >= this.data.length || size <= 0) {
 			return null;
 		} else {
@@ -114,4 +117,8 @@ export class StringReader extends stream.Readable {
 	public getMarker(): number {
 		return this.marker;
 	}
+}
+
+export function defaultOptions(opts: interfaces.BasicOptions) {
+	
 }

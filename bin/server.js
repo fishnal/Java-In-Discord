@@ -7,6 +7,7 @@ const fs = require("fs");
 const util = require("util");
 const cp = require("child_process");
 const utils_1 = require("./utils");
+const interfaces = require("./interfaces");
 class Server {
     /**
      * Constructs a Server object.
@@ -60,6 +61,11 @@ class Server {
             throw new errors.JDKError(util.format('valid JDK compilers: %O', Server.supportedJDKs));
         }
     }
+    /**
+     * Fixes a Java snippet line endings and the ending of the content.
+     * @param snippet the Java REPL snippet
+     * @returns the fixed Java snippet.
+     */
     static fixSnippet(snippet) {
         while (snippet.indexOf('\r\n') >= 0) {
             snippet = snippet.replace('\r\n', '\n');
@@ -81,10 +87,10 @@ class Server {
         let classFile = baseFile + '.class';
         fs.unlinkSync(classFile);
     }
-    static exit(process) {
+    static exit(process, callback) {
         // find a way to tell if input is finished
         process.kill();
-        throw new errors.TimeoutError();
+        callback('execution timed out');
     }
     /**
      * Runs a Java REPL snippet using Java 9's "jshell" environment. Times out
@@ -98,29 +104,29 @@ class Server {
      * @see Server#compileString
      * @see Server#compileFile
      */
-    repl(snippet, { timeout = 5000 }) {
-        Server.validateTimeout(timeout);
+    repl(snippet, opts = {}, callback) {
+        interfaces.defaultOptions(opts, {
+            timeout: 5000
+        });
+        Server.validateTimeout(opts.timeout);
         snippet = Server.fixSnippet(snippet);
         let inputBufferIndex = 0;
         let inputBuffer = snippet.split('\n');
-        let output = '';
+        let outputPipe = new utils_1.StringWriter();
         console.log('Running snippet...');
         let jshell = 'C:/Program Files/Java/jdk-9/bin/jshell.exe';
         let process = pty.spawn(jshell, []);
-        let timer = setTimeout(Server.exit, timeout, process);
+        let timer = setTimeout(Server.exit, opts.timeout, process, callback);
         process.setEncoding('utf-8');
         process.on('data', data => {
             if (inputBufferIndex < inputBuffer.length) {
                 process.write(inputBuffer[inputBufferIndex++] + "\n");
             }
-            console.log(data);
-            output += data;
+            outputPipe.write(data);
         });
         process.on('close', code => {
             clearTimeout(timer);
-            console.log('process exited');
-            console.log('output:');
-            console.log(output);
+            callback(outputPipe.getData());
         });
     }
     /**
@@ -130,9 +136,7 @@ class Server {
      * EX: 'int a = 2;' does not compile
      * EX: 'class A { }' does compile
      * EX: 'public class A { }' compiles if it is specified to be in a "file"
-     * 		'A.java' if no file is specified, then this will very likely fail
-     * 		as the file name that is chosen is random (specified by
-     * 		Utils#randString(number))
+     * 		'A.java' (if no file is specified, then this will fail)
      *
      * @param compileString the Java string to compile.
      * @param timeout the timeout in milliseconds (default: 5000); must fall in range
@@ -142,21 +146,26 @@ class Server {
      * random string)
      * @see Server#getSupportedJDKs for a list of supported JDKs
      */
-    compileString(compileString, { timeout = 5000, jdkCompiler = 'jdk8', file = '$' + utils.randString() + '.java' }) {
-        Server.validateTimeout(timeout);
-        Server.validateJDKCompiler(jdkCompiler);
-        let compilerPath = Server.supportedJDKs[jdkCompiler];
+    compileString(compileString, opts = {}) {
+        interfaces.defaultOptions(opts, {
+            timeout: 5000,
+            jdkCompiler: 'jdk8',
+            file: '$' + utils.randString() + '.java',
+        });
+        Server.validateTimeout(opts.timeout);
+        Server.validateJDKCompiler(opts.jdkCompiler);
+        let compilerPath = Server.supportedJDKs[opts.jdkCompiler];
         let outputPipe = new utils_1.StringWriter();
         console.log('Compiling string...');
-        fs.writeFileSync(file, compileString);
+        fs.writeFileSync(opts.file, compileString);
         try {
-            outputPipe.write(cp.spawnSync(compilerPath, [file], {
+            outputPipe.write(cp.spawnSync(compilerPath, [opts.file], {
                 cwd: process.cwd(),
-                timeout: timeout,
+                timeout: opts.timeout,
                 encoding: 'utf8'
             }).stderr);
-            Server.unlinkGeneratedClass(file);
-            fs.unlinkSync(file);
+            Server.unlinkGeneratedClass(opts.file);
+            fs.unlinkSync(opts.file);
         }
         catch (err) {
             if (err.message.indexOf('TIMEDOUT') >= 0) {
@@ -183,16 +192,20 @@ class Server {
      * compilation (defaults to 'jdk8') and timeout duration.
      * @see Server#getSupportedJDKs for a list of supported JDKs
      */
-    compileFile(file, { timeout = 5000, jdkCompiler = 'jdk8' }) {
-        Server.validateTimeout(timeout);
-        Server.validateJDKCompiler(jdkCompiler);
-        let compilerPath = Server.supportedJDKs[jdkCompiler];
+    compileFile(file, opts = {}) {
+        interfaces.defaultOptions(opts, {
+            timeout: 5000,
+            jdkCompiler: 'jdk8'
+        });
+        Server.validateTimeout(opts.timeout);
+        Server.validateJDKCompiler(opts.jdkCompiler);
+        let compilerPath = Server.supportedJDKs[opts.jdkCompiler];
         let outputPipe = new utils_1.StringWriter();
         console.log('Compiling file...');
         try {
             outputPipe.write(cp.spawnSync(compilerPath, [file], {
                 cwd: process.cwd(),
-                timeout: timeout,
+                timeout: opts.timeout,
                 encoding: 'utf8'
             }).stderr);
             // get generated class file: file.baseName + '.class'
@@ -229,3 +242,4 @@ Server.supportedJDKs = {
     'jdk9': 'c:/program files/java/jdk-9/bin/javac.exe'
 };
 exports.Server = Server;
+//# sourceMappingURL=server.js.map

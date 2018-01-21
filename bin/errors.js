@@ -47,3 +47,4 @@ class JDKError extends Error {
     }
 }
 exports.JDKError = JDKError;
+//# sourceMappingURL=errors.js.map

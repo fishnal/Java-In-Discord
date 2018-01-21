@@ -45,6 +45,9 @@ class StringWriter extends stream.Writable {
      */
     constructor() {
         super();
+        /**
+         * The string this Writer writes to.
+         */
         this.data = '';
     }
     _write(chunk, encoding, callback) {
@@ -99,3 +102,7 @@ class StringReader extends stream.Readable {
     }
 }
 exports.StringReader = StringReader;
+function defaultOptions(opts) {
+}
+exports.defaultOptions = defaultOptions;
+//# sourceMappingURL=utils.js.map
