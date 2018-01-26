@@ -102,7 +102,48 @@ class StringReader extends stream.Readable {
     }
 }
 exports.StringReader = StringReader;
-function defaultOptions(opts) {
+const wsChars = [
+    '\u0009', '\u000a', '\u000b', '\u000c', '\u000d', '\u0020', '\u0085', '\u00a0',
+    '\u1680', '\u2000', '\u2001', '\u2002', '\u2003', '\u2004', '\u2005', '\u2006',
+    '\u2007', '\u2008', '\u2009', '\u200a', '\u2028', '\u2029', '\u202f', '\u205f',
+    '\u3000', '\u200b', '\u200c', '\u200d', '\u2060', '\ufeff'
+];
+/**
+ * Removes all whitespace characters from a string.
+ * Whitespace characters identified by
+ * https://en.wikipedia.org/wiki/Whitespace_character#Unicode
+ * @param str th string.
+ * @returns the string with no whitespace characters.
+ */
+function removeWhitespace(str) {
+    let nows = '';
+    for (let i = 0; i < str.length; i++) {
+        if (wsChars.indexOf(str.charAt(i)) < 0) {
+            nows += str.charAt(i);
+        }
+    }
+    return nows;
 }
-exports.defaultOptions = defaultOptions;
+exports.removeWhitespace = removeWhitespace;
+function splitArgs(str) {
+    let args = str.split(' ');
+    for (let i = 0; i < args.length; i++) {
+        if (args[i].startsWith('"')) {
+            args[i] = args[i].substring(1);
+            // we're expecting a literal argument here, so add all the
+            // arguments together (join with a space) when we reach
+            // an argument that ends in a quote
+            let j = i + 1;
+            for (; j < args.length; j++) {
+                if (args[j].endsWith('"')) {
+                    args[j] = args[j].substring(0, args[j].length - 1);
+                    break;
+                }
+            }
+            args[i] += ' ' + args.splice(i + 1, j).join(' ');
+        }
+    }
+    return args;
+}
+exports.splitArgs = splitArgs;
 //# sourceMappingURL=utils.js.map

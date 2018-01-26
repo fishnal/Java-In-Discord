@@ -1,15 +1,33 @@
-import * as errors from "./errors";
 import * as utils from './utils';
 import * as pty from 'node-pty';
 import { ITerminal } from "node-pty/lib/interfaces";
 import * as fs from 'fs';
+import * as fse from 'fs-extra';
 import * as util from 'util';
 import * as cp from 'child_process';
 import { StringWriter } from "./utils";
 import * as interfaces from "./interfaces";
-import { CompileStringOptions, CompileOptions } from "./interfaces";
+import * as errors from './errors';
 
-export class Server {
+/**
+ * Processes Java REPL scripts and compilations.
+ */
+export class JavaProcessor {
+	/**
+	 * Identifier for REPL.
+	 */
+	public static readonly REPL_CODE = 1;
+	
+	/**
+	 * Identifier for file compilation.
+	 */
+	public static readonly FILE_COMP_CODE = 2;
+	
+	/**
+	 * Identifier for string compilation.
+	 */
+	public static readonly STRING_COMP_CODE = 3;
+
 	/**
 	 * Minimum timeout duration.
 	 */
@@ -35,7 +53,7 @@ export class Server {
 	public static getSupportedJDKs(): string[] {
 		let jdks: string[] = [];
 
-		for (let jdk in Server.supportedJDKs) {
+		for (let jdk in JavaProcessor.supportedJDKs) {
 			jdks.push(jdk);
 		}
 
@@ -44,31 +62,31 @@ export class Server {
 
 	/**
 	 * Validates a timeout duration is in range of the min and max values
-	 * specified by Server#MIN_TIMEOUT and Server#MAX_TIMEOUT
+	 * specified by JavaProcessor#MIN_TIMEOUT and JavaProcessor#MAX_TIMEOUT
 	 * 
 	 * @param timeout the timeout duration
 	 * @throws RangeError if the timeout is not in range of the min and max
 	 * values.
 	 */
 	private static validateTimeout(timeout: number): void {
-		if (timeout < Server.MIN_TIMEOUT || timeout > Server.MAX_TIMEOUT) {
+		if (!(timeout >= JavaProcessor.MIN_TIMEOUT && timeout <= JavaProcessor.MAX_TIMEOUT)) {
 			throw new RangeError(
-				util.format('invalid timeout value (between %dms and %dms)',
-				Server.MIN_TIMEOUT, Server.MAX_TIMEOUT)
+				util.format('Invalid timeout value (between %dms and %dms)',
+				JavaProcessor.MIN_TIMEOUT, JavaProcessor.MAX_TIMEOUT)
 			);
 		}
 	}
 
 	/**
 	 * Validates a JDK compiler choice by checking if it exists in
-	 * Server#supportedJDKs
+	 * JavaProcessor#supportedJDKs
 	 * 
 	 * @param jdkCompiler the JDK compiler choice. 
 	 * @throws JDKError if the choice is not valid.
 	 */
 	private static validateJDKCompiler(jdkCompiler: string): void {
-		if (!Server.supportedJDKs[jdkCompiler]) {
-			throw new errors.JDKError(util.format('valid JDK compilers: %O', Server.supportedJDKs));
+		if (!JavaProcessor.supportedJDKs[jdkCompiler]) {
+			throw new errors.JDKError(util.format('valid JDK compilers: %O', JavaProcessor.supportedJDKs));
 		}
 	}
 
@@ -79,7 +97,7 @@ export class Server {
 	 */
 	private static fixSnippet(snippet: string): string {
 		while (snippet.indexOf('\r\n') >= 0) {
-			snippet = snippet.replace('\r\n', '\n');
+		 	snippet = snippet.replace('\r\n', '\n');
 		}
 
 		if (!snippet.endsWith('\n')) {
@@ -87,30 +105,14 @@ export class Server {
 		}
 
 		if (!snippet.endsWith('/exit\n')) {
-			snippet += '/exit';
+			snippet += '/exit\n';
 		}
 
 		return snippet;
 	}
 
 	/**
-	 * Unlinks the generated class file from this java file.
-	 * @param {string} file the file path
-	 */
-	private static unlinkGeneratedClass(file: string) {
-		let baseFile = file.substring(0, file.lastIndexOf('.'));
-		let classFile = baseFile + '.class';
-		fs.unlinkSync(classFile);
-	}
-
-	private static exit(process: ITerminal, callback: (output: string) => void): void {
-		// find a way to tell if input is finished
-		process.kill();
-		callback('execution timed out');
-	}
-
-	/**
-	 * Constructs a Server object.
+	 * Constructs a JavaProcessor object.
 	 */
 	public constructor() {
 		/* TODO read in workspaces
@@ -129,49 +131,39 @@ export class Server {
 	/**
 	 * Runs a Java REPL snippet using Java 9's "jshell" environment. Times out
 	 * after a certain duration. If you're looking to see if a file compiles,
-	 * see Server#compileString(string, number, string) and 
-	 * Server#compileFile(string, number, string).
+	 * see JavaProcessor#compileString(string, number, string) and 
+	 * JavaProcessor#compileFile(string, number, string).
 	 * 
 	 * @param snippet the Java REPL snippet 
 	 * @param timeout the timeout in milliseconds (default: 5000); must fall in range
-	 * of Server.MIN_TIMEOUT and Server.MAX_TIMEOUT
-	 * @see Server#compileString
-	 * @see Server#compileFile
+	 * of JavaProcessor.MIN_TIMEOUT and JavaProcessor.MAX_TIMEOUT
+	 * @returns the output of the snippet including any errors that occur during
+	 * execution (errors and normal outputs are not distinguished)
+	 * @see JavaProcessor#compileString
+	 * @see JavaProcessor#compileFile
 	 */
-	public repl(snippet: string, opts: interfaces.BasicOptions = {}, callback?: (output: string) => void): void {
+	public repl(snippet: string, opts: interfaces.BasicOptions = {}, callback: (err: string, output: string) => void = (err, output) => {}): string {
 		interfaces.defaultOptions(opts, {
 			timeout:5000
 		});
 
-		Server.validateTimeout(opts.timeout);
+		JavaProcessor.validateTimeout(opts.timeout);
 
-		snippet = Server.fixSnippet(snippet);
+		snippet = JavaProcessor.fixSnippet(snippet);
+		let jshFile = '$' + utils.randString() + '.jsh';
+		fs.writeFileSync(jshFile, snippet);
 
-		let inputBufferIndex: number = 0;
-		let inputBuffer: string[] = snippet.split('\n');
 		let outputPipe: StringWriter = new StringWriter();
-
-		console.log('Running snippet...');
 	
 		let jshell: string = 'C:/Program Files/Java/jdk-9/bin/jshell.exe';
-		let process: ITerminal = pty.spawn(jshell, []);
+		outputPipe.write(cp.spawnSync(jshell, [jshFile], {
+			encoding: 'utf-8',
+			timeout: opts.timeout
+		}).stdout);
 
-		let timer = setTimeout(Server.exit, opts.timeout, process, callback);
-	
-		process.setEncoding('utf-8');
+		fs.unlinkSync(jshFile);
 
-		process.on('data', data => {
-			if (inputBufferIndex < inputBuffer.length) {
-				process.write(inputBuffer[inputBufferIndex++] + "\n");
-			}
-
-			outputPipe.write(data);
-		});
-	
-		process.on('close', code => {
-			clearTimeout(timer);
-			callback(outputPipe.getData());
-		});
+		return outputPipe.getData();
 	}
 
 	/**
@@ -185,38 +177,39 @@ export class Server {
 	 * 
 	 * @param compileString the Java string to compile.
 	 * @param timeout the timeout in milliseconds (default: 5000); must fall in range
-	 * of Server.MIN_TIMEOUT and Server.MAX_TIMEOUT
+	 * of JavaProcessor.MIN_TIMEOUT and JavaProcessor.MAX_TIMEOUT
 	 * @param options a map of options; can specify which JDK to use for
 	 * compilation (defaults to 'jdk8'), a "file" to compile in (defaults to some
 	 * random string)
-	 * @see Server#getSupportedJDKs for a list of supported JDKs
+	 * @see JavaProcessor#getSupportedJDKs for a list of supported JDKs
 	 */
-	public compileString(compileString: string,  opts: CompileStringOptions = {}): string {
+	public compileString(compileString: string,  opts: interfaces.CompileStringOptions = {}): string {
 		interfaces.defaultOptions(opts, {
 			timeout: 5000,
 			jdkCompiler: 'jdk8',
 			file: '$' + utils.randString() + '.java',
 		});
 
-		Server.validateTimeout(opts.timeout);
-		Server.validateJDKCompiler(opts.jdkCompiler);
+		JavaProcessor.validateTimeout(opts.timeout);
+		JavaProcessor.validateJDKCompiler(opts.jdkCompiler);
 		
-		let compilerPath: string = Server.supportedJDKs[opts.jdkCompiler];
+		let compilerPath: string = JavaProcessor.supportedJDKs[opts.jdkCompiler];
 		let outputPipe: StringWriter = new StringWriter();
-
-		console.log('Compiling string...');
 
 		fs.writeFileSync(opts.file, compileString);
 
 		try {
-			outputPipe.write(cp.spawnSync(compilerPath, [opts.file], {
+			let dir = 'jid_cache_' + utils.randString() + '/'
+			fs.mkdirSync(dir);
+			
+			outputPipe.write(cp.spawnSync(compilerPath, ['-d', dir, opts.file], {
 				cwd: process.cwd(),
 				timeout: opts.timeout,
 				encoding: 'utf8'
 			}).stderr);
 
-			Server.unlinkGeneratedClass(opts.file);
 			fs.unlinkSync(opts.file);
+			fse.removeSync(dir);
 		} catch (err) {
 			if (err.message.indexOf('TIMEDOUT') >= 0) {
 				// execution timed out, record that
@@ -227,7 +220,7 @@ export class Server {
 		}
 
 		if (outputPipe.getData() == '') {
-			outputPipe.write('Successful compilation');
+			return null;
 		}
 
 		return outputPipe.getData();
@@ -239,34 +232,34 @@ export class Server {
      *
      * @param file the Java file to compile.
      * @param timeout the timeout in milliseconds (default: 5000); must fall in range
-     * of Server.MIN_TIMEOUT and Server.MAX_TIMEOUT
+     * of JavaProcessor.MIN_TIMEOUT and JavaProcessor.MAX_TIMEOUT
      * @param options a map of options; can specify which JDK to use for
      * compilation (defaults to 'jdk8') and timeout duration.
-     * @see Server#getSupportedJDKs for a list of supported JDKs
+     * @see JavaProcessor#getSupportedJDKs for a list of supported JDKs
      */
-	public compileFile(file: string, opts: CompileOptions = {}): string {
+	public compileFile(file: string, opts: interfaces.CompileOptions = {}): string {
 		interfaces.defaultOptions(opts, {
 			timeout: 5000,
 			jdkCompiler: 'jdk8'
 		});
 
-		Server.validateTimeout(opts.timeout);
-		Server.validateJDKCompiler(opts.jdkCompiler);
+		JavaProcessor.validateTimeout(opts.timeout);
+		JavaProcessor.validateJDKCompiler(opts.jdkCompiler);
 		
-		let compilerPath: string = Server.supportedJDKs[opts.jdkCompiler];
+		let compilerPath: string = JavaProcessor.supportedJDKs[opts.jdkCompiler];
 		let outputPipe: StringWriter = new StringWriter();
 
-		console.log('Compiling file...');
-
 		try {
-			outputPipe.write(cp.spawnSync(compilerPath, [file], {
+			let dir: string = 'jid_cache_' + utils.randString() + '/';
+			fs.mkdirSync(dir);
+			
+			outputPipe.write(cp.spawnSync(compilerPath, ['-d', dir, file], {
 				cwd: process.cwd(),
 				timeout: opts.timeout,
 				encoding: 'utf8'
 			}).stderr);
-			
-			// get generated class file: file.baseName + '.class'
-			Server.unlinkGeneratedClass(file);
+
+			fse.removeSync(dir);
 		} catch (err) {
 			if (err.message.indexOf('TIMEDOUT') >= 0) {
 				// execution timed out, record that
@@ -277,7 +270,7 @@ export class Server {
 		}
 
 		if (outputPipe.getData() == '') {
-			outputPipe.write('Successful compilation');
+			return null;
 		}
 
 		return outputPipe.getData();

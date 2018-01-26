@@ -6,7 +6,8 @@
             "request": "launch",
             "name": "Launch Node",
 			"program": "${file}",
-			"internalConsoleOptions": "openOnSessionStart"
+			"internalConsoleOptions": "openOnSessionStart",
+			"console": "externalTerminal"
 		},
 		{
 			"name": "Launch TypeScript",
@@ -22,7 +23,8 @@
 			"sourceMaps": true,
 			"cwd": "${workspaceRoot}",
 			"protocol": "inspector",
-			"internalConsoleOptions": "openOnSessionStart"
+			"internalConsoleOptions": "openOnSessionStart",
+			"console": "externalTerminal"
 		}
     ]
 }

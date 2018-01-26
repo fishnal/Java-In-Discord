@@ -4,6 +4,7 @@
 export class TimeoutError extends Error {
 	constructor(message?: string) {
 		super(message);
+		Object.setPrototypeOf(this, TimeoutError.prototype);
 	}
 }
 
@@ -13,6 +14,7 @@ export class TimeoutError extends Error {
 export class AccessError extends Error {
 	constructor(message?: string) {
 		super(message);
+		Object.setPrototypeOf(this, AccessError.prototype);
 	}
 }
 
@@ -22,6 +24,7 @@ export class AccessError extends Error {
 export class FileAccessError extends AccessError {
 	constructor(message?: string) {
 		super(message);
+		Object.setPrototypeOf(this, FileAccessError.prototype);
 	}
 }
 
@@ -33,6 +36,7 @@ export class FileAccessError extends AccessError {
 export class WorkspaceAccessError extends AccessError {
 	constructor(message?: string) {
 		super(message);
+		Object.setPrototypeOf(this, WorkspaceAccessError.prototype);
 	}
 }
 
@@ -42,5 +46,6 @@ export class WorkspaceAccessError extends AccessError {
 export class JDKError extends Error {
 	constructor(message?: string) {
 		super(message);
+		Object.setPrototypeOf(this, JDKError.prototype);
 	}
 }

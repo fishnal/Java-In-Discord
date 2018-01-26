@@ -15,3 +15,11 @@ public class Foo {
 		System.out.println(obj.a);
 	}
 }
+
+class Bar {
+	int b;
+
+	public void bar() {
+		b++;
+	}
+}

@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 class TimeoutError extends Error {
     constructor(message) {
         super(message);
+        Object.setPrototypeOf(this, TimeoutError.prototype);
     }
 }
 exports.TimeoutError = TimeoutError;
@@ -15,6 +16,7 @@ exports.TimeoutError = TimeoutError;
 class AccessError extends Error {
     constructor(message) {
         super(message);
+        Object.setPrototypeOf(this, AccessError.prototype);
     }
 }
 exports.AccessError = AccessError;
@@ -24,6 +26,7 @@ exports.AccessError = AccessError;
 class FileAccessError extends AccessError {
     constructor(message) {
         super(message);
+        Object.setPrototypeOf(this, FileAccessError.prototype);
     }
 }
 exports.FileAccessError = FileAccessError;
@@ -35,6 +38,7 @@ exports.FileAccessError = FileAccessError;
 class WorkspaceAccessError extends AccessError {
     constructor(message) {
         super(message);
+        Object.setPrototypeOf(this, WorkspaceAccessError.prototype);
     }
 }
 exports.WorkspaceAccessError = WorkspaceAccessError;
@@ -44,6 +48,7 @@ exports.WorkspaceAccessError = WorkspaceAccessError;
 class JDKError extends Error {
     constructor(message) {
         super(message);
+        Object.setPrototypeOf(this, JDKError.prototype);
     }
 }
 exports.JDKError = JDKError;
