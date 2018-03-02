@@ -140,10 +140,10 @@ export class JavaProcessor {
 
 		let outputPipe: StringWriter = new StringWriter();
 	
-		outputPipe.write(cp.spawnSync(this.deps['jshell'], [jshFile], {
+		outputPipe.write(cp.execFileSync(this.deps['jshell'], [jshFile], {
 			encoding: 'utf-8',
 			timeout: opts.timeout
-		}).stdout);
+		}));
 
 		fs.unlinkSync(jshFile);
 
