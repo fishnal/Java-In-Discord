@@ -39,28 +39,6 @@ export class JavaProcessor {
 	public static readonly MAX_TIMEOUT: number = 20000;
 
 	/**
-	 * Supported JDKs.
-	 */
-	private static readonly supportedJDKs: {[jdk: string]: string} = {
-		'jdk8':'c:/program files/java/jdk1.8.0_144/bin/javac.exe',
-		'jdk9':'c:/program files/java/jdk-9/bin/javac.exe'
-	}
-
-	/**
-	 * Returns a list of the supported JDKs.
-	 * @returns list of supported JDKs.
-	 */
-	public static getSupportedJDKs(): string[] {
-		let jdks: string[] = [];
-
-		for (let jdk in JavaProcessor.supportedJDKs) {
-			jdks.push(jdk);
-		}
-
-		return jdks;
-	}
-
-	/**
 	 * Validates a timeout duration is in range of the min and max values
 	 * specified by JavaProcessor#MIN_TIMEOUT and JavaProcessor#MAX_TIMEOUT
 	 * 
@@ -74,19 +52,6 @@ export class JavaProcessor {
 				util.format('Invalid timeout value (between %dms and %dms)',
 				JavaProcessor.MIN_TIMEOUT, JavaProcessor.MAX_TIMEOUT)
 			);
-		}
-	}
-
-	/**
-	 * Validates a JDK compiler choice by checking if it exists in
-	 * JavaProcessor#supportedJDKs
-	 * 
-	 * @param jdkCompiler the JDK compiler choice. 
-	 * @throws JDKError if the choice is not valid.
-	 */
-	private static validateJDKCompiler(jdkCompiler: string): void {
-		if (!JavaProcessor.supportedJDKs[jdkCompiler]) {
-			throw new errors.JDKError(util.format('valid JDK compilers: %O', JavaProcessor.supportedJDKs));
 		}
 	}
 
@@ -112,20 +77,39 @@ export class JavaProcessor {
 	}
 
 	/**
-	 * Constructs a JavaProcessor object.
+	 * Dependencies used by this JavaProcessor.
 	 */
-	public constructor() {
-		/* TODO read in workspaces
-		 * if no workspaces present, then print this info
-		 * if workspaces present, print which ones were read in
-		 * if a user w/o a workspace makes a request, ask them if they want to setup one
-			 * offer 3 options: yes, not now, don't ask again
-			 * if don't ask again is selected, let them know they can make a workspace anytime
-			 * by executing a certain command
-		 * user can request for their workspace to be purged (removes all files in their workspace)
-		 * user can request to remove their workspace entirely
-		 * 
-		 */
+	private deps: interfaces.Dependencies;
+
+	/**
+	 * Constructs a JavaProcessor object.
+	 * 
+	 * @param deps: the dependencies to initialize this JavaProcessor with.
+	 */
+	public constructor(deps?: interfaces.Dependencies) {
+		this.deps = deps;
+	}
+
+	/**
+	 * Validates a dependency exists before using it.
+	 * 
+	 * @param dep the dependency to look for.
+	 */
+	private validateDependency(dep: string): void {
+		if (!this.deps[dep]) {
+			throw new errors.DependencyError(util.format(
+				'dependency [%O] not found', dep
+			));
+		}
+	}
+
+	/**
+	 * Sets the dependencies for this JavaProcessor.
+	 * 
+	 * @param deps the new dependencies.
+	 */
+	public setDependencies(deps: interfaces.Dependencies) {
+		this.deps = deps;
 	}
 
 	/**
@@ -142,12 +126,13 @@ export class JavaProcessor {
 	 * @see JavaProcessor#compileString
 	 * @see JavaProcessor#compileFile
 	 */
-	public repl(snippet: string, opts: interfaces.BasicOptions = {}, callback: (err: string, output: string) => void = (err, output) => {}): string {
+	public repl(snippet: string, opts: interfaces.TimedOptions = {}, callback: (err: string, output: string) => void = (err, output) => {}): string {
 		interfaces.defaultOptions(opts, {
 			timeout:5000
 		});
 
 		JavaProcessor.validateTimeout(opts.timeout);
+		this.validateDependency('jshell');
 
 		snippet = JavaProcessor.fixSnippet(snippet);
 		let jshFile = '$' + utils.randString() + '.jsh';
@@ -155,8 +140,7 @@ export class JavaProcessor {
 
 		let outputPipe: StringWriter = new StringWriter();
 	
-		let jshell: string = 'C:/Program Files/Java/jdk-9/bin/jshell.exe';
-		outputPipe.write(cp.spawnSync(jshell, [jshFile], {
+		outputPipe.write(cp.spawnSync(this.deps['jshell'], [jshFile], {
 			encoding: 'utf-8',
 			timeout: opts.timeout
 		}).stdout);
@@ -186,14 +170,13 @@ export class JavaProcessor {
 	public compileString(compileString: string,  opts: interfaces.CompileStringOptions = {}): string {
 		interfaces.defaultOptions(opts, {
 			timeout: 5000,
-			jdkCompiler: 'jdk8',
+			jdkCompiler: 'javac8',
 			file: '$' + utils.randString() + '.java',
 		});
 
 		JavaProcessor.validateTimeout(opts.timeout);
-		JavaProcessor.validateJDKCompiler(opts.jdkCompiler);
+		this.validateDependency(opts.jdkCompiler);
 		
-		let compilerPath: string = JavaProcessor.supportedJDKs[opts.jdkCompiler];
 		let outputPipe: StringWriter = new StringWriter();
 
 		fs.writeFileSync(opts.file, compileString);
@@ -202,7 +185,7 @@ export class JavaProcessor {
 			let dir = 'jid_cache_' + utils.randString() + '/'
 			fs.mkdirSync(dir);
 			
-			outputPipe.write(cp.spawnSync(compilerPath, ['-d', dir, opts.file], {
+			outputPipe.write(cp.spawnSync(this.deps[opts.jdkCompiler], ['-d', dir, opts.file], {
 				cwd: process.cwd(),
 				timeout: opts.timeout,
 				encoding: 'utf8'
@@ -212,7 +195,7 @@ export class JavaProcessor {
 			fse.removeSync(dir);
 		} catch (err) {
 			if (err.message.indexOf('TIMEDOUT') >= 0) {
-				// execution timed out, record that
+				/* execution timed out, record that */
 				outputPipe.write('execution timed out');
 			} else {
 				outputPipe.write(err.message);
@@ -244,16 +227,15 @@ export class JavaProcessor {
 		});
 
 		JavaProcessor.validateTimeout(opts.timeout);
-		JavaProcessor.validateJDKCompiler(opts.jdkCompiler);
+		this.validateDependency(opts.jdkCompiler);
 		
-		let compilerPath: string = JavaProcessor.supportedJDKs[opts.jdkCompiler];
 		let outputPipe: StringWriter = new StringWriter();
 
 		try {
 			let dir: string = 'jid_cache_' + utils.randString() + '/';
 			fs.mkdirSync(dir);
 			
-			outputPipe.write(cp.spawnSync(compilerPath, ['-d', dir, file], {
+			outputPipe.write(cp.spawnSync(this.deps[opts.jdkCompiler], ['-d', dir, file], {
 				cwd: process.cwd(),
 				timeout: opts.timeout,
 				encoding: 'utf8'
@@ -262,7 +244,7 @@ export class JavaProcessor {
 			fse.removeSync(dir);
 		} catch (err) {
 			if (err.message.indexOf('TIMEDOUT') >= 0) {
-				// execution timed out, record that
+				/* execution timed out, record that */
 				outputPipe.write('execution timed out');
 			} else {
 				outputPipe.write(err.message);

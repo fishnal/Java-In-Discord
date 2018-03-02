@@ -1,6 +1,6 @@
-import { Processor } from '../../src/processor';
+import { JavaProcessor } from '../../src/processor';
 
-var a: Processor = new Processor();
+var a: JavaProcessor = new JavaProcessor();
 console.log(a.compileString('class A {} class B {} class C {}'));
 console.log("==================================================");
 console.log(a.compileFile('tests/java-examples/Foo.java'));

@@ -1,4 +1,5 @@
 import * as stream from 'stream';
+import * as fs from 'fs';
 import * as interfaces from './interfaces';
 
 /**
@@ -144,15 +145,21 @@ export function removeWhitespace(str: string): string {
 	return nows;
 }
 
+/**
+ * Splits the arguments in string by spaces.
+ * (Not effective with nested quotes).
+ * 
+ * @param str the string to split.
+ */
 export function splitArgs(str: string): string[] {
 	let args: string[] = str.split(' ');
 
 	for (let i: number = 0; i < args.length; i++) {
 		if (args[i].startsWith('"')) {
 			args[i] = args[i].substring(1);
-			// we're expecting a literal argument here, so add all the
-			// arguments together (join with a space) when we reach
-			// an argument that ends in a quote
+			/* we're expecting a literal argument here, so add all the
+			   arguments together (join with a space) when we reach
+			   an argument that ends in a quote */
 			
 			let j: number = i + 1
 			for (; j < args.length; j++) {
@@ -167,4 +174,54 @@ export function splitArgs(str: string): string[] {
 	}
 
 	return args;
+}
+
+const JDK9_MATCH = ".*[(\/|\\\\)]jdk-9.*[(\/|\\\\)]bin"; /* for finding jdk9 javac and jshell */
+const JDK8_MATCH = ".*[(\/|\\\\)]jdk1\.8\.0.*[(\/|\\\\)]bin"; /* for finding jdk8 javac */
+
+/**
+ * Splits the PATH environment variable.
+ */
+function splitPATH(): string[] {
+	return process.env['PATH'].split(';');
+}
+
+/**
+ * Finds dependencies necessary for the JavaProcessor.
+ */
+export function findDeps(): interfaces.Dependencies {
+	/* list of deps; init with status as 0b111 to indicate no deps found yet */
+	let deps: interfaces.Dependencies = { status: 0b111 };
+	let dirs: string[] = splitPATH(); /* PATH variables */
+
+	for (let i in dirs) {
+		if (!deps['javac8'] && dirs[i].match(JDK8_MATCH)) {
+			/* dirs[i] is a jdk8 bin directory */
+			/* confirm that this has javac.exe (for WIN) */
+			if (fs.existsSync(dirs[i] + '/javac.exe')) {
+				deps['javac8'] = dirs[i] + '/javac.exe';
+				deps['status'] -= 1; /* indicate javac 8 was found */
+			}
+		} else if ((!deps['javac9'] || !deps['jshell']) && dirs[i].match(JDK9_MATCH)) {
+			/* dirs[i] is a jdk9 bin directory */
+			/* confirm jdk9 undefined and javac.exe exists (for WIN) */
+			if (!deps['javac9'] && fs.existsSync(dirs[i] + '/javac.exe')) {
+				deps['javac9'] = dirs[i] + '/javac.exe';
+				deps['status'] -= 1 << 1; /* indicate javac 9 was found */
+			}
+
+			/* confirm jshell undefined and jshell.exe exists (for WIN) */
+			if (!deps['jshell'] && fs.existsSync(dirs[i] + '/jshell.exe')) {
+				deps['jshell'] = dirs[i] + '/jshell.exe';
+				deps['status'] -= 1 << 2; /* indicate jshell was found */
+			}
+		}
+
+		/* break out loop if we found all deps */
+		if (!deps['status']) {
+			break;
+		}
+	}
+
+	return deps;
 }

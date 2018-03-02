@@ -1,10 +1,11 @@
 {
     "version": "0.2.0",
     "configurations": [
+
         {
+			"name": "Launch Node",
             "type": "node",
             "request": "launch",
-            "name": "Launch Node",
 			"program": "${file}",
 			"internalConsoleOptions": "openOnSessionStart",
 			"console": "externalTerminal"
@@ -14,7 +15,7 @@
 			"type": "node",
 			"request": "launch",
 			"args": [
-				"${relativeFile}"
+				"${relativeFile}",
 			],
 			"runtimeArgs": [
 				"-r",

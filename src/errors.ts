@@ -41,11 +41,11 @@ export class WorkspaceAccessError extends AccessError {
 }
 
 /**
- * Indicates an invalid JDK or some issue with the JDK.
+ * Indicates an invalid JDK or some issue with the dependencies.
  */
-export class JDKError extends Error {
+export class DependencyError extends Error {
 	constructor(message?: string) {
 		super(message);
-		Object.setPrototypeOf(this, JDKError.prototype);
+		Object.setPrototypeOf(this, DependencyError.prototype);
 	}
 }
