@@ -48,7 +48,7 @@ function processClientOpts(args: string[]): interfaces.ClientOptions {
 	if (opts.config) {
 		/* read in JSON config file */
 		let configData: any = JSON.parse(fs.readFileSync(opts.config).toString());
-		
+
 		opts.jshell = configData['jshell'];
 		opts.javac9 = configData['javac9'];
 		opts.javac8 = configData['javac8'];
@@ -69,7 +69,7 @@ rl.question("Enter your Discord bot's token: ", token => {
 		console.log('successfully logged in: ' + fulfilled);
 	}).catch(err => {
 		console.log('failed to login: ' + err);
-	});	
+	});
 });
 
 client.on('ready', () => {
@@ -128,11 +128,11 @@ function processJavaCommand(msg: Message): void {
 			response.push('Whoops! You forgot to add a value for the `timeout` option!');
 			status = undefined;
 		}
-		
+
 		switch (status) {
 			case JavaProcessor.REPL_CODE: {
 				msg.reply("Running your Java snippet....");
-				
+
 				try {
 					let output: string = jproc.repl(lines.slice(i+1, lines.length - 1).join('\n'), {
 						timeout: commandOpts['timeout']
@@ -144,7 +144,7 @@ function processJavaCommand(msg: Message): void {
 						while (output.indexOf('\r\n') >= 0) {
 							output = output.replace('\r\n', '\n');
 						}
-						
+
 						if (!output.startsWith('```\n')) {
 							output = '```\n' + output;
 						}
@@ -223,7 +223,7 @@ function processJavaCommand(msg: Message): void {
 
 function processAttachments(msg: Message, attachments: Collection<string, MessageAttachment>): void {
 	let response: string[] = [];
-	
+
 	attachments.forEach((v, k, m) => {
 		if (!fs.existsSync(clientOpts.workspace)) {
 			try {
@@ -265,11 +265,11 @@ function processAttachments(msg: Message, attachments: Collection<string, Messag
 							timeout: commandOpts['timeout'],
 							jdkCompiler: commandOpts['jdkCompiler']
 						});
-						
+
 						if (output == null) {
 							response.push("You're Java file compiled successfully!");
 						} else {
-							response.push("You're Java file had some issues compiling:\n```\n" 
+							response.push("You're Java file had some issues compiling:\n```\n"
 								+ output + "\n```");
 						}
 					} catch (err) {
@@ -285,14 +285,14 @@ function processAttachments(msg: Message, attachments: Collection<string, Messag
 				}
 
 				msg.reply(response);
-				inUse = false;
 			});
 
 			resp.pipe(fs.createWriteStream(file));
 		}).on('error', err => {
 			msg.reply('There was an issue receiving your file :frowning:\n'
 				+ '```\n' + err + '\n```');
-			inUse = false;
 		});
 	});
+
+	inUse = false;
 }
