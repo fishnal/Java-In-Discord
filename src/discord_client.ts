@@ -1,4 +1,4 @@
-import { Client, Collection, MessageAttachment, Message } from 'discord.js';
+import { Client, Collection, MessageAttachment, Message, TextChannel } from 'discord.js';
 import * as readline from 'readline';
 import * as fs from 'fs';
 import * as request from 'request';
@@ -8,12 +8,30 @@ import * as minimist from 'minimist';
 import * as interfaces from './interfaces';
 import { TimeoutError, DependencyError } from './errors';
 import { JavaProcessor } from './processor';
-import { removeWhitespace, splitArgs, findDeps, SortedSet } from './utils';
-import { POINT_CONVERSION_UNCOMPRESSED } from 'constants';
+import { removeWhitespace, splitArgs, findDeps } from './utils';
+import { format } from 'util';
+
+/* max output length that bot will preview in the text channel
+ * (includes any other characters bot needs to add)
+ */
+const MAX_OUTPUT_PREVIEW_LEN: number = 200;
+
+const cmdLineOpts: object = minimist(process.argv.slice(2));
+
+let inputStream: NodeJS.ReadableStream = process.stdin;
+
+if (cmdLineOpts['token']) {
+	if (typeof cmdLineOpts['token'] == 'boolean') {
+		console.log("no value for 'token' option, using stdin");
+	} else {
+		let fileInput: fs.ReadStream = fs.createReadStream(cmdLineOpts['token']);
+		inputStream = fileInput;
+	}
+}
 
 /* used for reading in token of discord application */
-const rl: readline.ReadLine = readline.createInterface({
-	input: process.stdin,
+let rl: readline.ReadLine = readline.createInterface({
+	input: inputStream,
 	output: process.stdout,
 	terminal: false
 });
@@ -25,9 +43,13 @@ const client: Client = new Client();
 /* additional options user provided for the client to use */
 let clientOpts: interfaces.ClientOptions = processClientOpts(process.argv.slice(2));
 
+/* make workspace directory if it doesn't exist */
+if (!fs.existsSync(clientOpts.workspace)) {
+	fs.mkdirSync(clientOpts.workspace);
+}
+
 function processClientOpts(args: string[]): interfaces.ClientOptions {
 	let opts: interfaces.ClientOptions = {};
-	let parsedOpts: object = minimist(args);
 
 	/* supported properties */
 	let props: string[] = [ 'workspace', 'config', 'jshell', 'javac8', 'javac9' ];
@@ -37,7 +59,7 @@ function processClientOpts(args: string[]): interfaces.ClientOptions {
 	 * added to our options, but we never look at it
 	 */
 	props.forEach(prop => {
-		opts[prop] = parsedOpts['--' + prop];
+		opts[prop] = cmdLineOpts['--' + prop];
 	});
 
 	/* dependencies for the java processor */
@@ -87,15 +109,39 @@ function processClientOpts(args: string[]): interfaces.ClientOptions {
 /* acquire token and login */
 rl.question("Enter your Discord bot's token: ", token => {
 	client.login(token).then(fulfilled => {
-		console.log('successfully logged in: ' + fulfilled);
+		console.log('Successfully logged in: ' + fulfilled);
 	}).catch(err => {
-		console.log('failed to login: ' + err);
+		console.log('Failed to login!\n' + err);
+		process.exit(1);
+	});
+
+	rl.close();
+	rl = readline.createInterface({
+		input: process.stdin,
+		output: process.stdout,
+		terminal: false
+	});
+
+	rl.on('line', (line: string) => {
+		if (line == 'quit' || line == 'disconnect' || line == 'exit') {
+			client.channels.forEach(channel => {
+				if (channel.type == 'text') {
+					/* TODO why is this not being sent? */
+					(channel as TextChannel).send('Disconnecting...');
+				}
+			});
+
+			client.emit('disconnect');
+		}
 	});
 });
 
 /* log client's good to go */
 client.on('ready', () => {
 	console.log('Client ready!');
+}).on('disconnect', (event: CloseEvent) => {
+	console.log('Disconnecting....');
+	process.exit(0);
 });
 
 /* poor way of preventing other messages from being processed at once. */
@@ -113,11 +159,34 @@ client.on('message', msg => {
 		inUse = true;
 
 		/* determine if user wants to execute a java-based command */
-		if (msg.content.startsWith('```java') && msg.content.endsWith('```')) {
+		let content: string = msg.content;
+
+		if (content.startsWith('```java') && content.endsWith('```')) {
 			processJavaCommand(msg);
+		} else if (content.trimLeft().startsWith('/cleanup')) {
+			/* trim for argument */
+			let lifetimeArg: string | string[] = content.trimLeft().substring(content.indexOf(' '));
+			lifetimeArg = lifetimeArg.substring(1);
+			let lifetimeNum: number = 0;
+
+			if (lifetimeArg == 'all') {
+				lifetimeNum = 0.001;
+			} else {
+				/* parse w:d:h:m:s */
+				lifetimeArg = lifetimeArg.split(':');
+				let secondConversions: number[] = [1, 60, 3600, 86400, 604800];
+				/* 604800s in week, 86400s in day, 3600 in hour, 60 in minute */
+
+				for (let i = 0; i < lifetimeArg.length; i++) {
+					lifetimeNum += Number(lifetimeArg[i]) * secondConversions[lifetimeArg.length - i - 1];
+				}
+			}
+
+			/* figure out how to delete bot's messsages in this text channel */
+
+			inUse = false;
 		} else {
-			let attachments: Collection<string, MessageAttachment> = msg.attachments;
-			processAttachments(msg, attachments);
+			processAttachments(msg, msg.attachments);
 		}
 	}
 });
@@ -170,7 +239,7 @@ function processJavaCommand(msg: Message): void {
 		let commandOpts: object = minimist(commandArgs);
 
 		/* if user provides timeout option but doesn't specify what the value is, then bad */
-		if (commandOpts['--timeout'] != null && typeof commandOpts['--timeout'] == 'boolean') {
+		if (commandOpts['timeout'] != null && typeof commandOpts['timeout'] == 'boolean') {
 			response.push('Whoops! You forgot to add a value for the `timeout` option!');
 			status = undefined;
 		}
@@ -179,11 +248,16 @@ function processJavaCommand(msg: Message): void {
 			case JavaProcessor.REPL_CODE: {
 				msg.reply("Running your Java snippet....");
 
+				let successful: boolean = true;
+				let output: string = null;
+				/* where to store raw output */
+				let outputFile: string = null;
+
 				try {
 					/* send the snippet for the java processor to handle; this has a possibility
 					 * of throwing a timeout error, so catch and handle appropriately
 					 */
-					let output: string = jproc.repl(lines.slice(i+1, lines.length - 1).join('\n'), {
+					output = jproc.repl(lines.slice(i+1, lines.length - 1).join('\n'), {
 						timeout: commandOpts['timeout']
 					});
 
@@ -196,54 +270,34 @@ function processJavaCommand(msg: Message): void {
 							output = output.replace('\r\n', '\n');
 						}
 
-						/* TODO: dealing with snippet printing out tildas
-						 * Bad solution: it's a feature, not a bug
-						 * Solution A: performance over space
-						 *    Find all possible sequential tildas (greater tha 3) in every line.
-						 *    For example, if the output (as a whole) has sequential tildas of
-						 *    2, 3, 4, and 6, then we should wrap the output in 7 tildas
-						 *    (note that even though Discord doesn't EASILY let you use 1 or 2
-						 *    tildas for code-blocks, it is 100% possible).
-						 *
-						 *    Benefit over solution B is that we don't have to spend time finding
-						 *    the smallest tilda sequence that won't conflict with the original
-						 *    output. Con is that it takes up more space.
-						 * Solution B: space over performance
-						 *    The better solution, but instead of just doing 1 + the largest
-						 *    tilda sequence, we can find the smallest possible sequence by
-						 *    searching through our sequence sizes, and finding the smallest
-						 *    possible sequence that can be newly inserted into our sequence sizes
-						 *    (this array is sorted). In the scenario above, that would be
-						 *    a sequence of 1 tildas.
-						 *
-						 *    Benefit and con compared to solution A is the exact opposite.
-						 *    Could optimize searching time for tilda sequence as we find our
-						 *    sequence sizes (as the lines are pruned through). This gets rid of
-						 *    an iteration over the sequence sizes.
-						 *
-						 * 	  We're going to put this in the utils.ts file, because we can make
-						 *    use of this idea elsewhere in the application.
-						 */
-
-						/* kinda hoping that user doesn't print out 3 tildas;
-						 * that can be interpreted as a code-block from Markdown,
-						 * so that'll mess with the output format
-						 */
-						if (!output.startsWith('```\n')) {
-							output = '```\n' + output;
+						/* get time message was created at */
+						let date: string = msg.createdAt.toISOString();
+						/* make date file friendly */
+						while (date.indexOf(":") > -1) {
+							date = date.replace(":", "-");
 						}
 
-						/* add a new line if needed */
-						if (!output.endsWith('\n')) {
-							output += '\n';
+						outputFile = date + '.txt';
+
+						/* get new name for outputFile if current one already exists */
+						for (let i = 1; fs.existsSync(clientOpts.workspace + outputFile); i++) {
+							outputFile = date + format('(%d).txt', i);
 						}
 
-						output += '```';
+						fs.writeFileSync(clientOpts.workspace + outputFile, output);
 
-						response.push("Here's your snippet output:");
-						response.push(output);
+						/* wrap output in codeblocks
+						 * preserve any new lines output may have; issue with wrapping output
+						 * in codeblock is that it can escape prematurely if output contains
+						 * sequences of 3 tildas (so discord interprets it in predictable,
+						 * weird way); going to upload a file as a complement so other's can
+						 * see the raw output (will be a text file) as done above.
+						 */
+						output = '```\n' + output + '\n```';
 					}
 				} catch (err) {
+					successful = false;
+
 					if (err instanceof RangeError) {
 						/* invalid timeout value */
 						response.push('Whoops! ' + err.message + '!');
@@ -259,7 +313,24 @@ function processJavaCommand(msg: Message): void {
 					}
 				}
 
-				msg.reply(response);
+				if (successful && output != null) {
+					/* send output file */
+					msg.channel.send("Here's your snippet output:", {
+						file: clientOpts.workspace + outputFile,
+						name: outputFile
+					});
+
+					if (output.length > MAX_OUTPUT_PREVIEW_LEN) {
+						response.push("The output was quite large :eyes: so go ahead and look at"
+						 + "the file I sent.");
+					} else {
+						response.push("If the preview looks weird, you can always look at the "
+						+ "file I sent.");
+						response.push(output);
+					}
+				}
+
+				msg.reply(response.join('\n'));
 
 				break;
 			}

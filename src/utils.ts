@@ -1,6 +1,8 @@
 import * as stream from 'stream';
 import * as fs from 'fs';
 import * as interfaces from './interfaces';
+import { callbackify } from 'util';
+import { AssertionError } from 'assert';
 
 /**
  * Initializes locally scoped field 'chars'.
@@ -176,8 +178,8 @@ export function splitArgs(str: string): string[] {
 	return args;
 }
 
-const JDK9_MATCH = ".*[(\/|\\\\)]jdk-9.*[(\/|\\\\)]bin"; /* for finding jdk9 javac and jshell */
-const JDK8_MATCH = ".*[(\/|\\\\)]jdk1\.8\.0.*[(\/|\\\\)]bin"; /* for finding jdk8 javac */
+const JDK9_MATCH_WIN = ".*[(\/|\\\\)]jdk-9.*[(\/|\\\\)]bin"; /* for finding jdk9 javac and jshell */
+const JDK8_MATCH_WIN = ".*[(\/|\\\\)]jdk1\.8\.0.*[(\/|\\\\)]bin"; /* for finding jdk8 javac */
 
 /**
  * Splits the PATH environment variable.
@@ -195,14 +197,14 @@ export function findDeps(): interfaces.Dependencies {
 	let dirs: string[] = splitPATH(); /* PATH variables */
 
 	for (let i in dirs) {
-		if (!deps['javac8'] && dirs[i].match(JDK8_MATCH)) {
+		if (!deps['javac8'] && dirs[i].match(JDK8_MATCH_WIN)) {
 			/* dirs[i] is a jdk8 bin directory */
 			/* confirm that this has javac.exe (for WIN) */
 			if (fs.existsSync(dirs[i] + '/javac.exe')) {
 				deps['javac8'] = dirs[i] + '/javac.exe';
 				deps['status'] -= 1; /* indicate javac 8 was found */
 			}
-		} else if ((!deps['javac9'] || !deps['jshell']) && dirs[i].match(JDK9_MATCH)) {
+		} else if ((!deps['javac9'] || !deps['jshell']) && dirs[i].match(JDK9_MATCH_WIN)) {
 			/* dirs[i] is a jdk9 bin directory */
 			/* confirm jdk9 undefined and javac.exe exists (for WIN) */
 			if (!deps['javac9'] && fs.existsSync(dirs[i] + '/javac.exe')) {
@@ -224,78 +226,4 @@ export function findDeps(): interfaces.Dependencies {
 	}
 
 	return deps;
-}
-
-class Node<T> {
-	value: T;
-	next: Node<T>;
-
-	constructor(value: T, next?: Node<T>) {
-		this.value = value;
-		this.next = next;
-	}
-}
-
-export class SortedSet<T> {
-	add: (t: T) => boolean;
-	remove: (t: T) => boolean;
-	size: () => number;
-
-	constructor(comparator: (k1: T, k2: T) => number) {
-		let head: Node<T>;
-		let size: number;
-
-		this.add = (t: T): boolean => {
-			let p: Node<T> = null;
-			let c: Node<T> = head;
-			let comp: number;
-
-			// 0 3 5 9
-			// insert 5
-			while (c && (comp = comparator(c.value, t)) < 0) {
-				c = (p = c).next;
-			}
-
-			if (comp == 0) {
-				/* element already exists */
-				return false;
-			}
-
-			let n: Node<T> = new Node(t, c);
-
-			if (p) {
-				p.next = n;
-			} else {
-				head = n;
-			}
-
-			size++;
-
-			return true;
-		}
-
-		this.remove = (t: T): boolean => {
-			let p: Node<T> = null;
-			let c: Node<T> = head;
-			let comp: number;
-
-			while (c && (comp = comparator(c.value, t)) < 0) {
-				c = (p = c).next;
-			}
-
-			if (comp) {
-				return false;
-			}
-
-			if (p) {
-				p.next = c.next;
-			}
-
-			size--;
-
-			return true;
-		}
-
-		this.size = () => size;
-	}
 }

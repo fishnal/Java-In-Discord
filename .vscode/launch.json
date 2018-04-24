@@ -15,11 +15,11 @@
 			"type": "node",
 			"request": "launch",
 			"args": [
+				"--require",
+				"ts-node/register",
 				"${relativeFile}",
-			],
-			"runtimeArgs": [
-				"-r",
-				"ts-node/register"
+				"--token",
+				"token.txt"
 			],
 			"sourceMaps": true,
 			"cwd": "${workspaceRoot}",
