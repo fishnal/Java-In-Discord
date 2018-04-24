@@ -7,7 +7,7 @@ import * as interfaces from './interfaces';
  */
 function initalizeChars(): string {
 	let str: string = '';
-	
+
 	for (let i: number = 'a'.charCodeAt(0); i <= 'z'.charCodeAt(0); i++) {
 		str += String.fromCharCode(i);
 		str += String.fromCharCode(i).toUpperCase();
@@ -28,7 +28,7 @@ export const chars: string = initalizeChars();
 
 /**
  * Generates a random string from possible characters in #chars
- * 
+ *
  * @param length the length of the string (default: 10)
  * @see chars for the possible characters
  */
@@ -148,7 +148,7 @@ export function removeWhitespace(str: string): string {
 /**
  * Splits the arguments in string by spaces.
  * (Not effective with nested quotes).
- * 
+ *
  * @param str the string to split.
  */
 export function splitArgs(str: string): string[] {
@@ -160,13 +160,13 @@ export function splitArgs(str: string): string[] {
 			/* we're expecting a literal argument here, so add all the
 			   arguments together (join with a space) when we reach
 			   an argument that ends in a quote */
-			
+
 			let j: number = i + 1
 			for (; j < args.length; j++) {
 				if (args[j].endsWith('"')) {
 					args[j] = args[j].substring(0, args[j].length - 1);
 					break;
-				}	
+				}
 			}
 
 			args[i] += ' ' + args.splice(i+1, j).join(' ');
@@ -224,4 +224,78 @@ export function findDeps(): interfaces.Dependencies {
 	}
 
 	return deps;
+}
+
+class Node<T> {
+	value: T;
+	next: Node<T>;
+
+	constructor(value: T, next?: Node<T>) {
+		this.value = value;
+		this.next = next;
+	}
+}
+
+export class SortedSet<T> {
+	add: (t: T) => boolean;
+	remove: (t: T) => boolean;
+	size: () => number;
+
+	constructor(comparator: (k1: T, k2: T) => number) {
+		let head: Node<T>;
+		let size: number;
+
+		this.add = (t: T): boolean => {
+			let p: Node<T> = null;
+			let c: Node<T> = head;
+			let comp: number;
+
+			// 0 3 5 9
+			// insert 5
+			while (c && (comp = comparator(c.value, t)) < 0) {
+				c = (p = c).next;
+			}
+
+			if (comp == 0) {
+				/* element already exists */
+				return false;
+			}
+
+			let n: Node<T> = new Node(t, c);
+
+			if (p) {
+				p.next = n;
+			} else {
+				head = n;
+			}
+
+			size++;
+
+			return true;
+		}
+
+		this.remove = (t: T): boolean => {
+			let p: Node<T> = null;
+			let c: Node<T> = head;
+			let comp: number;
+
+			while (c && (comp = comparator(c.value, t)) < 0) {
+				c = (p = c).next;
+			}
+
+			if (comp) {
+				return false;
+			}
+
+			if (p) {
+				p.next = c.next;
+			}
+
+			size--;
+
+			return true;
+		}
+
+		this.size = () => size;
+	}
 }

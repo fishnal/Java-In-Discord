@@ -17,12 +17,12 @@ export class JavaProcessor {
 	 * Identifier for REPL.
 	 */
 	public static readonly REPL_CODE = 1;
-	
+
 	/**
 	 * Identifier for file compilation.
 	 */
 	public static readonly FILE_COMP_CODE = 2;
-	
+
 	/**
 	 * Identifier for string compilation.
 	 */
@@ -41,7 +41,7 @@ export class JavaProcessor {
 	/**
 	 * Validates a timeout duration is in range of the min and max values
 	 * specified by JavaProcessor#MIN_TIMEOUT and JavaProcessor#MAX_TIMEOUT
-	 * 
+	 *
 	 * @param timeout the timeout duration
 	 * @throws RangeError if the timeout is not in range of the min and max
 	 * values.
@@ -83,7 +83,7 @@ export class JavaProcessor {
 
 	/**
 	 * Constructs a JavaProcessor object.
-	 * 
+	 *
 	 * @param deps: the dependencies to initialize this JavaProcessor with.
 	 */
 	public constructor(deps?: interfaces.Dependencies) {
@@ -92,7 +92,7 @@ export class JavaProcessor {
 
 	/**
 	 * Validates a dependency exists before using it.
-	 * 
+	 *
 	 * @param dep the dependency to look for.
 	 */
 	private validateDependency(dep: string): void {
@@ -105,7 +105,7 @@ export class JavaProcessor {
 
 	/**
 	 * Sets the dependencies for this JavaProcessor.
-	 * 
+	 *
 	 * @param deps the new dependencies.
 	 */
 	public setDependencies(deps: interfaces.Dependencies) {
@@ -115,10 +115,10 @@ export class JavaProcessor {
 	/**
 	 * Runs a Java REPL snippet using Java 9's "jshell" environment. Times out
 	 * after a certain duration. If you're looking to see if a file compiles,
-	 * see JavaProcessor#compileString(string, number, string) and 
+	 * see JavaProcessor#compileString(string, number, string) and
 	 * JavaProcessor#compileFile(string, number, string).
-	 * 
-	 * @param snippet the Java REPL snippet 
+	 *
+	 * @param snippet the Java REPL snippet
 	 * @param timeout the timeout in milliseconds (default: 5000); must fall in range
 	 * of JavaProcessor.MIN_TIMEOUT and JavaProcessor.MAX_TIMEOUT
 	 * @returns the output of the snippet including any errors that occur during
@@ -139,26 +139,29 @@ export class JavaProcessor {
 		fs.writeFileSync(jshFile, snippet);
 
 		let outputPipe: StringWriter = new StringWriter();
-	
-		outputPipe.write(cp.execFileSync(this.deps['jshell'], [jshFile], {
-			encoding: 'utf-8',
-			timeout: opts.timeout
-		}));
 
-		fs.unlinkSync(jshFile);
-
-		return outputPipe.getData();
+		try {
+			outputPipe.write(cp.execFileSync(this.deps['jshell'], [jshFile], {
+				encoding: 'utf-8',
+				timeout: opts.timeout
+			}));
+			return outputPipe.getData();
+		} catch (err) {
+			throw err;
+		} finally {
+			fs.unlinkSync(jshFile);
+		}
 	}
 
 	/**
 	 * Compiles a Java string using a certain JDK. Treats it as if it were
 	 * compiling it from a file. Tmes out after a given duration.
-	 * 
+	 *
 	 * EX: 'int a = 2;' does not compile
 	 * EX: 'class A { }' does compile
 	 * EX: 'public class A { }' compiles if it is specified to be in a "file"
 	 * 		'A.java' (if no file is specified, then this will fail)
-	 * 
+	 *
 	 * @param compileString the Java string to compile.
 	 * @param timeout the timeout in milliseconds (default: 5000); must fall in range
 	 * of JavaProcessor.MIN_TIMEOUT and JavaProcessor.MAX_TIMEOUT
@@ -176,7 +179,7 @@ export class JavaProcessor {
 
 		JavaProcessor.validateTimeout(opts.timeout);
 		this.validateDependency(opts.jdkCompiler);
-		
+
 		let outputPipe: StringWriter = new StringWriter();
 
 		fs.writeFileSync(opts.file, compileString);
@@ -184,7 +187,7 @@ export class JavaProcessor {
 		try {
 			let dir = 'jid_cache_' + utils.randString() + '/'
 			fs.mkdirSync(dir);
-			
+
 			outputPipe.write(cp.spawnSync(this.deps[opts.jdkCompiler], ['-d', dir, opts.file], {
 				cwd: process.cwd(),
 				timeout: opts.timeout,
@@ -210,7 +213,7 @@ export class JavaProcessor {
 	}
 
 	/**
-     * Compiles a Java file using a certain JDK.  Tmes out after a given 
+     * Compiles a Java file using a certain JDK.  Tmes out after a given
 	 * duration.
      *
      * @param file the Java file to compile.
@@ -228,13 +231,13 @@ export class JavaProcessor {
 
 		JavaProcessor.validateTimeout(opts.timeout);
 		this.validateDependency(opts.jdkCompiler);
-		
+
 		let outputPipe: StringWriter = new StringWriter();
 
 		try {
 			let dir: string = 'jid_cache_' + utils.randString() + '/';
 			fs.mkdirSync(dir);
-			
+
 			outputPipe.write(cp.spawnSync(this.deps[opts.jdkCompiler], ['-d', dir, file], {
 				cwd: process.cwd(),
 				timeout: opts.timeout,
