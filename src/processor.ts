@@ -7,6 +7,8 @@ import * as util from 'util';
 import * as cp from 'child_process';
 import * as interfaces from "./interfaces";
 import * as errors from './errors';
+import { Logger } from './logger';
+import { format } from 'util';
 
 /**
  * Processes Java REPL scripts and compilations.
@@ -46,6 +48,8 @@ export class JavaProcessor {
 	 * values.
 	 */
 	private static validateTimeout(timeout: number): void {
+		Logger.debug("Validating timeout");
+
 		if (!(timeout >= JavaProcessor.MIN_TIMEOUT && timeout <= JavaProcessor.MAX_TIMEOUT)) {
 			throw new RangeError(
 				util.format('Invalid timeout value (between %dms and %dms)',
@@ -60,6 +64,7 @@ export class JavaProcessor {
 	 * @returns the fixed Java snippet.
 	 */
 	private static fixSnippet(snippet: string): string {
+		Logger.debug("Fixing snippet (CRLF -> LF, end w/LF, end w/exit)");
 		while (snippet.indexOf('\r\n') >= 0) {
 		 	snippet = snippet.replace('\r\n', '\n');
 		}
@@ -71,6 +76,8 @@ export class JavaProcessor {
 		if (!snippet.endsWith('/exit\n')) {
 			snippet += '/exit\n';
 		}
+
+		Logger.debug("Snippet fixed");
 
 		return snippet;
 	}
@@ -95,6 +102,8 @@ export class JavaProcessor {
 	 * @param dep the dependency to look for.
 	 */
 	private validateDependency(dep: string): void {
+		Logger.debug("Validating dependency");
+
 		if (!this.deps[dep]) {
 			throw new errors.DependencyError(util.format(
 				'dependency [%O] not found', dep
@@ -134,20 +143,24 @@ export class JavaProcessor {
 		this.validateDependency('jshell');
 
 		snippet = JavaProcessor.fixSnippet(snippet);
-		let jshFile = '$' + utils.randString() + '.jsh';
+		let jshFile: string = '$' + utils.randString() + '.jsh';
+		Logger.debug(format("Snippet in temp file %s", jshFile));
 		fs.writeFileSync(jshFile, snippet);
 
 		let outputPipe: utils.StringWriter = new utils.StringWriter();
 
 		try {
+			Logger.debug(format("Synchronously executing file %s with options %o", this.deps['jshell'], opts));
 			outputPipe.write(cp.execFileSync(this.deps['jshell'], [jshFile], {
 				encoding: 'utf-8',
 				timeout: opts.timeout
 			}));
+			Logger.debug("Returning output from synchronous execution");
 			return outputPipe.getData();
 		} catch (err) {
 			throw err;
 		} finally {
+			Logger.debug(format("Deleting temp file %s", jshFile));
 			fs.unlinkSync(jshFile);
 		}
 	}
@@ -181,27 +194,28 @@ export class JavaProcessor {
 
 		let outputPipe: utils.StringWriter = new utils.StringWriter();
 
+		Logger.debug(format("Storing input string in temp file %s", opts.file));
 		fs.writeFileSync(opts.file, compileString);
 
+		/* place generated class files from compilation in a temp directory */
+		let dir: string = 'jid_cache_' + utils.randString() + '/';
+		Logger.debug(format("Storing generated class file(s) into temp directory %s", dir));
+
 		try {
-			let dir = 'jid_cache_' + utils.randString() + '/'
 			fs.mkdirSync(dir);
 
+			Logger.debug(format("Synchronously spawning process for command %s with options %o", this.deps[opts.jdkCompiler], opts));
 			outputPipe.write(cp.spawnSync(this.deps[opts.jdkCompiler], ['-d', dir, opts.file], {
 				cwd: process.cwd(),
 				timeout: opts.timeout,
 				encoding: 'utf8'
 			}).stderr);
-
+		} catch (err) {
+			throw err;
+		} finally {
+			Logger.debug(format("Deleting temp file (%s) and directory (%s)", opts.file, dir));
 			fs.unlinkSync(opts.file);
 			fse.removeSync(dir);
-		} catch (err) {
-			if (err.message.indexOf('TIMEDOUT') >= 0) {
-				/* execution timed out, record that */
-				outputPipe.write('execution timed out');
-			} else {
-				outputPipe.write(err.message);
-			}
 		}
 
 		if (outputPipe.getData() == '') {
@@ -233,24 +247,23 @@ export class JavaProcessor {
 
 		let outputPipe: utils.StringWriter = new utils.StringWriter();
 
+		let dir: string = 'jid_cache_' + utils.randString() + '/';
+		Logger.debug(format("Storing generated class file(s) into temp directory %s", dir));
+
 		try {
-			let dir: string = 'jid_cache_' + utils.randString() + '/';
 			fs.mkdirSync(dir);
 
+			Logger.debug(format("Synchronously spawning process for command %s with options %o", this.deps[opts.jdkCompiler], opts));
 			outputPipe.write(cp.spawnSync(this.deps[opts.jdkCompiler], ['-d', dir, file], {
 				cwd: process.cwd(),
 				timeout: opts.timeout,
 				encoding: 'utf8'
 			}).stderr);
-
-			fse.removeSync(dir);
 		} catch (err) {
-			if (err.message.indexOf('TIMEDOUT') >= 0) {
-				/* execution timed out, record that */
-				outputPipe.write('execution timed out');
-			} else {
-				outputPipe.write(err.message);
-			}
+			throw err;
+		} finally {
+			Logger.debug(format("Deleting temp directory (%s)", dir));
+			fse.removeSync(dir);
 		}
 
 		if (outputPipe.getData() == '') {

@@ -41,12 +41,10 @@ export const chars: string = initalizeChars();
 export function randString(length: number = 10) {
 	let str: string = '';
 
-	Logger.debug("Generating a random string");
 	for (let i: number = 0; i < length; i++) {
 		let randChar = chars.charAt(Math.floor(Math.random() * chars.length));
 		str += randChar;
 	}
-	Logger.debug(format("Randomly generated string: %s", str));
 
 	return str;
 }
@@ -144,13 +142,11 @@ const wsChars: string[] = [
 export function removeWhitespace(str: string): string {
 	let nows: string = '';
 
-	Logger.debug("Removing whitespace characters from a string");
 	for (let i: number = 0; i < str.length; i++) {
 		if (wsChars.indexOf(str.charAt(i)) < 0) {
 			nows += str.charAt(i);
 		}
 	}
-	Logger.debug("Finished removing whitespace chars from string");
 
 	return nows;
 }
@@ -164,7 +160,6 @@ export function removeWhitespace(str: string): string {
 export function splitArgs(str: string): string[] {
 	let args: string[] = str.split(' ');
 
-	Logger.debug("Splitting arguments in a string by spaces (string-literal safe)");
 	for (let i: number = 0; i < args.length; i++) {
 		if (args[i].startsWith('"')) {
 			args[i] = args[i].substring(1);
@@ -183,7 +178,6 @@ export function splitArgs(str: string): string[] {
 			args[i] += ' ' + args.splice(i+1, j).join(' ');
 		}
 	}
-	Logger.debug("Finished splitting args by spaces");
 
 	return args;
 }
@@ -241,7 +235,6 @@ export function findDeps(): interfaces.Dependencies {
 	}
 
 	/* replacing backs-lashes with forward-slashes */
-	Logger.debug("Replacing back-slashes with forward-slashes in dependency pathes");
 	for (let key in deps) {
 		if (typeof deps[key] == 'string') {
 			while ((deps[key] as String).indexOf('\\') > 0) {

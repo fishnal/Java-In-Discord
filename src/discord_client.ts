@@ -13,7 +13,7 @@ import { removeWhitespace, splitArgs, findDeps } from './jid_utils';
 import { Logger } from './logger';
 
 /* TODO change logging level based on command line args */
-Logger.setLevel(3); /* using debugging level */
+Logger.setLevel(Logger.DEBUG); /* using debugging level */
 
 /* max output length that bot will preview in the text channel
  * (includes any other characters bot needs to add)
@@ -358,26 +358,28 @@ function processJavaCommand(msg: Message): void {
 				}
 
 				if (successful && output != null) {
-					/* send output file */
-					Logger.debug("Sending file containing raw output to text channel");
-					msg.channel.send("Here's your snippet output:", {
-						file: clientOpts.workspace + outputFile,
-						name: outputFile
-					});
-
 					if (output.length > MAX_OUTPUT_PREVIEW_LEN) {
 						Logger.info("Output was too big to print");
-						response.push("The output was quite large :eyes: so go ahead and look at"
-						 + "the file I sent.");
+						response.push("The output was quite large :eyes: so go ahead and look at "
+							+ "the file I sent.");
 					} else {
 						Logger.info("Output was sent to text channel");
 						response.push("If the preview looks weird, you can always look at the "
-						+ "file I sent.");
+							+ "file I sent.");
 						response.push(output);
 					}
 				}
 
-				msg.reply();
+				msg.reply(output);
+
+				if (successful && output) {
+					/* send output file */
+					Logger.debug("Sending file containing raw output to text channel");
+					msg.channel.send("Raw Output:", {
+						file: clientOpts.workspace + outputFile,
+						name: outputFile
+					});
+				}
 
 				break;
 			}
