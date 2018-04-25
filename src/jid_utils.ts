@@ -1,8 +1,9 @@
 import * as stream from 'stream';
 import * as fs from 'fs';
-import * as interfaces from './interfaces';
-import { callbackify } from 'util';
+import { callbackify, format, print } from 'util';
 import { AssertionError } from 'assert';
+import * as interfaces from './interfaces';
+import { Logger } from './logger'
 
 /**
  * Initializes locally scoped field 'chars'.
@@ -10,6 +11,7 @@ import { AssertionError } from 'assert';
 function initalizeChars(): string {
 	let str: string = '';
 
+	Logger.debug("Initializing possible chars that can appear in a random string");
 	for (let i: number = 'a'.charCodeAt(0); i <= 'z'.charCodeAt(0); i++) {
 		str += String.fromCharCode(i);
 		str += String.fromCharCode(i).toUpperCase();
@@ -18,6 +20,8 @@ function initalizeChars(): string {
 	for (let i: number = 0; i < 10; i++) {
 		str += i;
 	}
+
+	Logger.debug("Finished random character list initialization");
 
 	return str;
 }
@@ -37,10 +41,12 @@ export const chars: string = initalizeChars();
 export function randString(length: number = 10) {
 	let str: string = '';
 
+	Logger.debug("Generating a random string");
 	for (let i: number = 0; i < length; i++) {
 		let randChar = chars.charAt(Math.floor(Math.random() * chars.length));
 		str += randChar;
 	}
+	Logger.debug(format("Randomly generated string: %s", str));
 
 	return str;
 }
@@ -138,11 +144,13 @@ const wsChars: string[] = [
 export function removeWhitespace(str: string): string {
 	let nows: string = '';
 
+	Logger.debug("Removing whitespace characters from a string");
 	for (let i: number = 0; i < str.length; i++) {
 		if (wsChars.indexOf(str.charAt(i)) < 0) {
 			nows += str.charAt(i);
 		}
 	}
+	Logger.debug("Finished removing whitespace chars from string");
 
 	return nows;
 }
@@ -156,6 +164,7 @@ export function removeWhitespace(str: string): string {
 export function splitArgs(str: string): string[] {
 	let args: string[] = str.split(' ');
 
+	Logger.debug("Splitting arguments in a string by spaces (string-literal safe)");
 	for (let i: number = 0; i < args.length; i++) {
 		if (args[i].startsWith('"')) {
 			args[i] = args[i].substring(1);
@@ -174,6 +183,7 @@ export function splitArgs(str: string): string[] {
 			args[i] += ' ' + args.splice(i+1, j).join(' ');
 		}
 	}
+	Logger.debug("Finished splitting args by spaces");
 
 	return args;
 }
@@ -185,6 +195,7 @@ const JDK8_MATCH_WIN = ".*[(\/|\\\\)]jdk1\.8\.0.*[(\/|\\\\)]bin"; /* for finding
  * Splits the PATH environment variable.
  */
 function splitPATH(): string[] {
+	Logger.debug("Splitting PATH environment variable");
 	return process.env['PATH'].split(';');
 }
 
@@ -203,6 +214,7 @@ export function findDeps(): interfaces.Dependencies {
 			if (fs.existsSync(dirs[i] + '/javac.exe')) {
 				deps['javac8'] = dirs[i] + '/javac.exe';
 				deps['status'] -= 1; /* indicate javac 8 was found */
+				Logger.debug("Found javac8");
 			}
 		} else if ((!deps['javac9'] || !deps['jshell']) && dirs[i].match(JDK9_MATCH_WIN)) {
 			/* dirs[i] is a jdk9 bin directory */
@@ -210,63 +222,33 @@ export function findDeps(): interfaces.Dependencies {
 			if (!deps['javac9'] && fs.existsSync(dirs[i] + '/javac.exe')) {
 				deps['javac9'] = dirs[i] + '/javac.exe';
 				deps['status'] -= 1 << 1; /* indicate javac 9 was found */
+				Logger.debug("Found javac9");
 			}
 
 			/* confirm jshell undefined and jshell.exe exists (for WIN) */
 			if (!deps['jshell'] && fs.existsSync(dirs[i] + '/jshell.exe')) {
 				deps['jshell'] = dirs[i] + '/jshell.exe';
 				deps['status'] -= 1 << 2; /* indicate jshell was found */
+				Logger.debug("Found jshell");
 			}
 		}
 
 		/* break out loop if we found all deps */
 		if (!deps['status']) {
+			Logger.debug("All dependencies found");
 			break;
 		}
 	}
 
+	/* replacing backs-lashes with forward-slashes */
+	Logger.debug("Replacing back-slashes with forward-slashes in dependency pathes");
+	for (let key in deps) {
+		if (typeof deps[key] == 'string') {
+			while ((deps[key] as String).indexOf('\\') > 0) {
+				deps[key] = (deps[key] as String).replace('\\', '/');
+			}
+		}
+	}
+
 	return deps;
-}
-
-export class Logger {
-	public static readonly ERRORS: number = 0;
-	public static readonly WARNINGS: number = 1;
-	public static readonly INFO: number = 2;
-	public static readonly DEBUG: number = 3;
-
-	private static level: number = Logger.INFO;
-
-	public static err(msg: any) {
-		if (Logger.level >= Logger.ERRORS) {
-			console.error('[ERROR]\t' + msg);
-		}
-	}
-
-	public static warn(msg: any) {
-		if (Logger.level >= Logger.WARNINGS) {
-			console.log('[WARN]\t' + msg);
-		}
-	}
-
-	public static info(msg: any) {
-		if (Logger.level >= Logger.INFO) {
-			console.log('[INFO]\t' + msg);
-		}
-	}
-
-	public static debug(msg: any) {
-		if (Logger.level >= Logger.DEBUG) {
-			console.log('[DEBUG]\t' + msg);
-		}
-	}
-
-	public static setLevel(level: number): boolean {
-		if (level < Logger.ERRORS || level > Logger.DEBUG) {
-			return false;
-		}
-
-		Logger.level = level;
-
-		return true;
-	}
 }

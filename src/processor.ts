@@ -1,11 +1,10 @@
-import * as utils from './utils';
+import * as utils from './jid_utils';
 import * as pty from 'node-pty';
 import { ITerminal } from "node-pty/lib/interfaces";
 import * as fs from 'fs';
 import * as fse from 'fs-extra';
 import * as util from 'util';
 import * as cp from 'child_process';
-import { StringWriter } from "./utils";
 import * as interfaces from "./interfaces";
 import * as errors from './errors';
 
@@ -138,7 +137,7 @@ export class JavaProcessor {
 		let jshFile = '$' + utils.randString() + '.jsh';
 		fs.writeFileSync(jshFile, snippet);
 
-		let outputPipe: StringWriter = new StringWriter();
+		let outputPipe: utils.StringWriter = new utils.StringWriter();
 
 		try {
 			outputPipe.write(cp.execFileSync(this.deps['jshell'], [jshFile], {
@@ -180,7 +179,7 @@ export class JavaProcessor {
 		JavaProcessor.validateTimeout(opts.timeout);
 		this.validateDependency(opts.jdkCompiler);
 
-		let outputPipe: StringWriter = new StringWriter();
+		let outputPipe: utils.StringWriter = new utils.StringWriter();
 
 		fs.writeFileSync(opts.file, compileString);
 
@@ -232,7 +231,7 @@ export class JavaProcessor {
 		JavaProcessor.validateTimeout(opts.timeout);
 		this.validateDependency(opts.jdkCompiler);
 
-		let outputPipe: StringWriter = new StringWriter();
+		let outputPipe: utils.StringWriter = new utils.StringWriter();
 
 		try {
 			let dir: string = 'jid_cache_' + utils.randString() + '/';
