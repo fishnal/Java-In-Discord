@@ -8,22 +8,29 @@ import * as minimist from 'minimist';
 import * as interfaces from './interfaces';
 import { TimeoutError, DependencyError } from './errors';
 import { JavaProcessor } from './processor';
-import { removeWhitespace, splitArgs, findDeps } from './utils';
+import { removeWhitespace, splitArgs, findDeps, Logger } from './utils';
 import { format } from 'util';
+
+/* TODO change logging level based on command line args */
+Logger.setLevel(3); /* using debugging level */
 
 /* max output length that bot will preview in the text channel
  * (includes any other characters bot needs to add)
  */
 const MAX_OUTPUT_PREVIEW_LEN: number = 200;
 
+/* get the command line args and parse them into options */
 const cmdLineOpts: object = minimist(process.argv.slice(2));
 
+/* input stream for reading in token */
 let inputStream: NodeJS.ReadableStream = process.stdin;
 
+/* check and validate token option */
 if (cmdLineOpts['token']) {
 	if (typeof cmdLineOpts['token'] == 'boolean') {
-		console.log("no value for 'token' option, using stdin");
+		Logger.warn("No value for 'token' option, using stdin");
 	} else {
+		Logger.info(format("Reading token from %s", cmdLineOpts['token']));
 		let fileInput: fs.ReadStream = fs.createReadStream(cmdLineOpts['token']);
 		inputStream = fileInput;
 	}
@@ -100,7 +107,7 @@ function processClientOpts(args: string[]): interfaces.ClientOptions {
 	 * user tries to run a java snippet, it won't run b/c there's nothing
 	 * that can run the snippet */
 	if (status) {
-		console.error('WARN: configuration status code = ' + status);
+		Logger.warn(format("Configuration status code = %d", status));
 	}
 
 	return opts;
@@ -109,9 +116,9 @@ function processClientOpts(args: string[]): interfaces.ClientOptions {
 /* acquire token and login */
 rl.question("Enter your Discord bot's token: ", token => {
 	client.login(token).then(fulfilled => {
-		console.log('Successfully logged in: ' + fulfilled);
+		Logger.info('Successfully logged in');
 	}).catch(err => {
-		console.log('Failed to login!\n' + err);
+		Logger.err('Failed to login!\n' + err);
 		process.exit(1);
 	});
 
@@ -138,9 +145,9 @@ rl.question("Enter your Discord bot's token: ", token => {
 
 /* log client's good to go */
 client.on('ready', () => {
-	console.log('Client ready!');
+	Logger.info('Client ready!');
 }).on('disconnect', (event: CloseEvent) => {
-	console.log('Disconnecting....');
+	Logger.info('Disconnecting....');
 	process.exit(0);
 });
 
@@ -151,6 +158,7 @@ client.on('message', msg => {
 	/* only work with messages that are not sent by this bot */
 	if (msg.author != client.user) {
 		if (inUse) {
+			Logger.debug("Bot currently performing a task");
 			msg.reply("I'm busy right now, try later.");
 			return;
 		}
@@ -308,7 +316,7 @@ function processJavaCommand(msg: Message): void {
 						} else {
 							/* some other unexpected error */
 							response.push('Something went wrong');
-							console.log(err);
+							Logger.err(err);
 						}
 					}
 				}
@@ -408,10 +416,10 @@ function processAttachments(msg: Message, attachments: Collection<string, Messag
 			try {
 				mkdirp.sync(clientOpts.workspace);
 			} catch (err) {
-				/* kinda bad if we couldn't create the workspace... */
+				/* bad if we couldn't create the workspace... */
 				response.push('Hmm... There was an issue creating the workspace...');
 				msg.reply(response);
-				console.log(err);
+				Logger.err(err);
 
 				/* don't continue on with this attachment */
 				return;
@@ -426,6 +434,7 @@ function processAttachments(msg: Message, attachments: Collection<string, Messag
 		/* downloading file */
 		https.get(msgAttachment.url, resp => {
 			resp.on('end', () => {
+				/* TODO if response length is 0, then don't we receive nothing... */
 				if (response.length != 0) {
 					/* TODO just push instead? */
 					response[0] = 'Received your files!';
@@ -479,12 +488,12 @@ function processAttachments(msg: Message, attachments: Collection<string, Messag
 							response.push("Compilation timed out :no_mouth:");
 						} else {
 							response.push('Something went wrong');
-							console.log(err);
+							Logger.err(err);
 						}
 					} finally {
 						if (index == attachmentsArray.length - 1) {
 							/* no longer in use since we processed all files */
-							inUse = false;
+							// inUse = false;
 						}
 					}
 				}
@@ -501,6 +510,8 @@ function processAttachments(msg: Message, attachments: Collection<string, Messag
 			if (index == attachmentsArray.length - 1) {
 				inUse = false;
 			}
+		}).on('finish', () => {
+			inUse = false;
 		});
 	});
 }

@@ -227,3 +227,46 @@ export function findDeps(): interfaces.Dependencies {
 
 	return deps;
 }
+
+export class Logger {
+	public static readonly ERRORS: number = 0;
+	public static readonly WARNINGS: number = 1;
+	public static readonly INFO: number = 2;
+	public static readonly DEBUG: number = 3;
+
+	private static level: number = Logger.INFO;
+
+	public static err(msg: any) {
+		if (Logger.level >= Logger.ERRORS) {
+			console.error('[ERROR]\t' + msg);
+		}
+	}
+
+	public static warn(msg: any) {
+		if (Logger.level >= Logger.WARNINGS) {
+			console.log('[WARN]\t' + msg);
+		}
+	}
+
+	public static info(msg: any) {
+		if (Logger.level >= Logger.INFO) {
+			console.log('[INFO]\t' + msg);
+		}
+	}
+
+	public static debug(msg: any) {
+		if (Logger.level >= Logger.DEBUG) {
+			console.log('[DEBUG]\t' + msg);
+		}
+	}
+
+	public static setLevel(level: number): boolean {
+		if (level < Logger.ERRORS || level > Logger.DEBUG) {
+			return false;
+		}
+
+		Logger.level = level;
+
+		return true;
+	}
+}
