@@ -12,50 +12,97 @@ import { JavaProcessor } from './processor';
 import { removeWhitespace, splitArgs, findDeps } from './jid_utils';
 import { Logger } from './logger';
 
-/* TODO change logging level based on command line args */
-Logger.setLevel(Logger.DEBUG); /* using debugging level */
-
 /* max output length that bot will preview in the text channel
  * (includes any other characters bot needs to add)
  */
 const MAX_OUTPUT_PREVIEW_LEN: number = 200;
 
-/* get the command line args and parse them into options */
-const cmdLineOpts: object = minimist(process.argv.slice(2));
+/* poor way of preventing other messages from being processed at once. */
+let syncer = new (class BadSynchronizer {
+	private inUse: boolean = false;
 
-/* input stream for reading in token */
-let inputStream: NodeJS.ReadableStream = process.stdin;
+	public setInUse(value: boolean): void {
+		if (this.inUse != value) {
+			if (this.inUse) {
+				/* previously in use, now no longer in use */
+				Logger.debug("Bot no longer in use");
+			} else {
+				Logger.debug("Bot is in use");
+			}
 
-/* check and validate token option */
-if (cmdLineOpts['token']) {
-	if (typeof cmdLineOpts['token'] == 'boolean') {
-		Logger.warn("No value for 'token' option, using stdin");
-	} else {
-		Logger.info(format("Reading token from %s", cmdLineOpts['token']));
-		let fileInput: fs.ReadStream = fs.createReadStream(cmdLineOpts['token']);
-		inputStream = fileInput;
+			this.inUse = value;
+		}
 	}
-}
 
-/* used for reading in token of discord application */
-let rl: readline.ReadLine = readline.createInterface({
-	input: inputStream,
-	output: process.stdout,
-	terminal: false
+	public getInUse(): boolean {
+		return this.inUse;
+	}
 });
-/* used for processing java commands */
-const jproc: JavaProcessor = new JavaProcessor();
-/* the bot/discord client we're going to use for api calls */
-const client: Client = new Client();
 
-/* additional options user provided for the client to use */
-Logger.debug("Processing options for client");
-let clientOpts: interfaces.ClientOptions = processClientOpts(process.argv.slice(2));
+let clientOpts: interfaces.ClientOptions;
+let client: Client;
+let jproc: JavaProcessor;
 
-/* make workspace directory if it doesn't exist */
-if (!fs.existsSync(clientOpts.workspace)) {
-	Logger.debug(format("Creating directory %s", clientOpts.workspace));
-	fs.mkdirSync(clientOpts.workspace);
+export function start(token: string, logLevel?: number) {
+	Logger.setLevel(logLevel ? logLevel : Logger.DEBUG);
+
+	jproc = new JavaProcessor();
+	client = new Client();
+
+	/* TODO need to get rid of this */
+	Logger.debug("Processing options for client");
+	clientOpts = processClientOpts([]);
+
+	/* make workspace directory if it doesn't exist */
+	if (!fs.existsSync(clientOpts.workspace)) {
+		Logger.debug(format("Creating directory %s", clientOpts.workspace));
+		fs.mkdirSync(clientOpts.workspace);
+	}
+
+	/* login client */
+	client.login(token).then(fulfilled => {
+		Logger.info("Logged in");
+	}).catch(err => {
+		Logger.err("Failed to login");
+		Logger.err(err);
+		process.exit(1);
+	});
+
+	/* client's good to go */
+	client.on('ready', () => {
+		Logger.info('Client ready!');
+	}).on('disconnect', (event: CloseEvent) => {
+		Logger.info('Disconnecting....');
+		process.exit(0);
+	});
+
+	/* do something whenever client gets a message */
+	client.on('message', msg => {
+		/* only work with messages that are not sent by this bot */
+		if (msg.author != client.user) {
+			if (syncer.getInUse()) {
+				Logger.debug("Bot currently performing a task");
+				msg.reply("I'm busy right now, try later.");
+				return;
+			}
+
+			/* this should always be set to false at some point */
+			syncer.setInUse(true);
+
+			/* determine if user wants to execute a java-based command */
+			let content: string = msg.content;
+
+			if (content.startsWith('```java') && content.endsWith('```')) {
+				Logger.debug("Processing java command");
+				processJavaCommand(msg);
+			} else if (msg.attachments.size > 0) {
+				Logger.debug("Processing attachments");
+				processAttachments(msg, msg.attachments);
+			} else {
+				syncer.setInUse(false);
+			}
+		}
+	});
 }
 
 function processClientOpts(args: string[]): interfaces.ClientOptions {
@@ -71,10 +118,10 @@ function processClientOpts(args: string[]): interfaces.ClientOptions {
 	 * added to our options, but we never look at it
 	 */
 	props.forEach(prop => {
-		opts[prop] = cmdLineOpts['--' + prop];
+		opts[prop] = args['--' + prop];
 
-		if (cmdLineOpts['--' + prop]) {
-			Logger.debug(format("opts[%s] = %s", prop, cmdLineOpts['--' + prop]));
+		if (args['--' + prop]) {
+			Logger.debug(format("opts[%s] = %s", prop, args['--' + prop]));
 		}
 	});
 
@@ -130,97 +177,6 @@ function processClientOpts(args: string[]): interfaces.ClientOptions {
 
 	return opts;
 }
-
-/* acquire token and login */
-rl.question("Enter your Discord bot's token:\n", token => {
-	client.login(token).then(fulfilled => {
-		Logger.info('Successfully logged in');
-
-		rl.close();
-		rl = readline.createInterface({
-			input: process.stdin,
-			output: process.stdout,
-			terminal: false
-		});
-
-		process.stdout.write('> ');
-
-		rl.on('line', (line: string) => {
-			if (line == 'quit' || line == 'disconnect' || line == 'exit') {
-				client.channels.forEach(channel => {
-					if (channel.type == 'text') {
-						/* TODO why is this not being sent? */
-						(channel as TextChannel).send('Disconnecting...');
-					}
-				});
-
-				client.emit('disconnect');
-			} else {
-				process.stdout.write('> ');
-			}
-		});
-	}).catch(err => {
-		Logger.err('Failed to login!\n' + err);
-		process.exit(1);
-	});
-});
-
-/* log client's good to go */
-client.on('ready', () => {
-	Logger.info('Client ready!');
-}).on('disconnect', (event: CloseEvent) => {
-	Logger.info('Disconnecting....');
-	process.exit(0);
-});
-
-/* poor way of preventing other messages from being processed at once. */
-let syncer = new (class BadSynchronizer {
-	private inUse: boolean = false;
-
-	public setInUse(value: boolean): void {
-		if (this.inUse != value) {
-			if (this.inUse) {
-				/* previously in use, now no longer in use */
-				Logger.debug("Bot no longer in use");
-			} else {
-				Logger.debug("Bot is in use");
-			}
-
-			this.inUse = value;
-		}
-	}
-
-	public getInUse(): boolean {
-		return this.inUse;
-	}
-});
-
-client.on('message', msg => {
-	/* only work with messages that are not sent by this bot */
-	if (msg.author != client.user) {
-		if (syncer.getInUse()) {
-			Logger.debug("Bot currently performing a task");
-			msg.reply("I'm busy right now, try later.");
-			return;
-		}
-
-		/* this should always be set to false at some point */
-		syncer.setInUse(true);
-
-		/* determine if user wants to execute a java-based command */
-		let content: string = msg.content;
-
-		if (content.startsWith('```java') && content.endsWith('```')) {
-			Logger.debug("Processing java command");
-			processJavaCommand(msg);
-		} else if (msg.attachments.size > 0) {
-			Logger.debug("Processing attachments");
-			processAttachments(msg, msg.attachments);
-		} else {
-			syncer.setInUse(false);
-		}
-	}
-});
 
 function processJavaCommand(msg: Message): void {
 	/* pattern for checking if command exists */
